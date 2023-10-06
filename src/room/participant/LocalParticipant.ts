@@ -188,7 +188,7 @@ export default class LocalParticipant extends Participant {
    * The change does not take immediate effect.
    * If successful, a `ParticipantEvent.ParticipantNameChanged` event will be emitted on the local participant.
    * Note: this requires `canUpdateOwnMetadata` permission.
-   * @param metadata
+   * @param name
    */
   setName(name: string): void {
     this.engine.client.sendUpdateLocalMetadata(this.metadata ?? '', name);
@@ -1208,8 +1208,8 @@ export default class LocalParticipant extends Participant {
   };
 
   private onTrackUpstreamPaused = (track: LocalTrack) => {
-    log.debug('upstream paused');
-    this.onTrackMuted(track, true);
+    log.debug('upstream paused', track);
+    // this.onTrackMuted(track, true);
   };
 
   private onTrackUpstreamResumed = (track: LocalTrack) => {

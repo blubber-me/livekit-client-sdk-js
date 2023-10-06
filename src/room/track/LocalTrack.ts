@@ -328,7 +328,7 @@ export default abstract class LocalTrack extends Track {
    * the server.
    * this API is unsupported on Safari < 12 due to a bug
    **/
-  async pauseUpstream() {
+  async pauseUpstream(emitMuteEvent: boolean = true) {
     const unlock = await this.pauseUpstreamLock.lock();
     try {
       if (this._isUpstreamPaused === true) {
@@ -341,6 +341,9 @@ export default abstract class LocalTrack extends Track {
 
       this._isUpstreamPaused = true;
       this.emit(TrackEvent.UpstreamPaused, this);
+      if (emitMuteEvent) {
+        this.emit(TrackEvent.Muted, this);
+      }
       const browser = getBrowser();
       if (browser?.name === 'Safari' && compareVersions(browser.version, '12.0') < 0) {
         // https://bugs.webkit.org/show_bug.cgi?id=184911
