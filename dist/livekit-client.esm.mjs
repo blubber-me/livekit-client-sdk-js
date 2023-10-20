@@ -5920,7 +5920,7 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ***************************************************************************** */
-/* global Reflect, Promise */
+/* global Reflect, Promise, SuppressedError, Symbol */
 
 
 function __awaiter(thisArg, _arguments, P, generator) {
@@ -5952,6 +5952,11 @@ function __asyncValues(o) {
     function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
     function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
 }
+
+typeof SuppressedError === "function" ? SuppressedError : function (error, suppressed, message) {
+    var e = new Error(message);
+    return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
+};
 
 var events = {exports: {}};
 
@@ -11863,10 +11868,10 @@ function getMatch(exp, ua) {
   return match && match.length >= id && match[id] || '';
 }
 
-var version$1 = "1.13.4";
+var version$1 = "1.14.1";
 
 const version = version$1;
-const protocolVersion = 9;
+const protocolVersion = 10;
 
 class VideoPreset {
   constructor(width, height, maxBitrate, maxFramerate, priority) {
@@ -12168,7 +12173,7 @@ var RoomEvent;
   /**
    * LiveKit will attempt to autoplay all audio tracks when you attach them to
    * audio elements. However, if that fails, we'll notify you via AudioPlaybackStatusChanged.
-   * `Room.canPlayAudio` will indicate if audio playback is permitted.
+   * `Room.canPlaybackAudio` will indicate if audio playback is permitted.
    */
   RoomEvent["AudioPlaybackStatusChanged"] = "audioPlaybackChanged";
   /**
@@ -12962,6 +12967,9 @@ function supportsAV1() {
 }
 function supportsVP9() {
   if (!('getCapabilities' in RTCRtpSender)) {
+    return false;
+  }
+  if (isFireFox()) {
     // technically speaking FireFox supports VP9, but SVC publishing is broken
     // https://bugzilla.mozilla.org/show_bug.cgi?id=1633876
     return false;
@@ -18437,14 +18445,16 @@ class RemoteTrack extends Track {
   /** @internal */
   setMediaStream(stream) {
     // this is needed to determine when the track is finished
-    // we send each track down in its own MediaStream, so we can assume the
-    // current track is the only one that can be removed.
     this.mediaStream = stream;
-    stream.onremovetrack = () => {
-      this.receiver = undefined;
-      this._currentBitrate = 0;
-      this.emit(TrackEvent.Ended, this);
+    const onRemoveTrack = event => {
+      if (event.track === this._mediaStreamTrack) {
+        stream.removeEventListener('removetrack', onRemoveTrack);
+        this.receiver = undefined;
+        this._currentBitrate = 0;
+        this.emit(TrackEvent.Ended, this);
+      }
     };
+    stream.addEventListener('removetrack', onRemoveTrack);
   }
   start() {
     this.startMonitor();
@@ -20306,9 +20316,6 @@ class LocalParticipant extends Participant {
       if (options === undefined) {
         options = {};
       }
-      if (options.resolution === undefined) {
-        options.resolution = ScreenSharePresets.h1080fps15.resolution;
-      }
       if (navigator.mediaDevices.getDisplayMedia === undefined) {
         throw new DeviceUnsupportedError('getDisplayMedia not supported');
       }
@@ -20481,7 +20488,8 @@ class LocalParticipant extends Participant {
         disableDtx: !((_a = opts.dtx) !== null && _a !== void 0 ? _a : true),
         encryption: this.encryptionType,
         stereo: isStereo,
-        disableRed: this.isE2EEEnabled || !((_b = opts.red) !== null && _b !== void 0 ? _b : true)
+        disableRed: this.isE2EEEnabled || !((_b = opts.red) !== null && _b !== void 0 ? _b : true),
+        stream: opts === null || opts === void 0 ? void 0 : opts.stream
       });
       // compute encodings and layers for video
       let encodings;
@@ -21971,8 +21979,11 @@ class Room extends eventsExports.EventEmitter {
     }
     const parts = unpackStreamId(stream.id);
     const participantId = parts[0];
-    let trackId = parts[1];
-    if (!trackId || trackId === '') trackId = mediaTrack.id;
+    let streamId = parts[1];
+    let trackId = mediaTrack.id;
+    // firefox will get streamId (pID|trackId) instead of (pID|streamId) as it doesn't support sync tracks by stream
+    // and generates its own track id instead of infer from sdp track id.
+    if (streamId && streamId.startsWith('TR')) trackId = streamId;
     if (participantId === this.localParticipant.sid) {
       livekitLogger.warn('tried to create RemoteParticipant for local participant');
       return;

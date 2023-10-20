@@ -12,7 +12,7 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ***************************************************************************** */
-/* global Reflect, Promise */
+/* global Reflect, Promise, SuppressedError, Symbol */
 
 
 function __awaiter(thisArg, _arguments, P, generator) {
@@ -24,6 +24,11 @@ function __awaiter(thisArg, _arguments, P, generator) {
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 }
+
+typeof SuppressedError === "function" ? SuppressedError : function (error, suppressed, message) {
+    var e = new Error(message);
+    return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
+};
 
 var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
 
@@ -1242,7 +1247,7 @@ class FrameCryptor extends BaseFrameCryptor {
           if (ratchetOpts.ratchetCount < this.keyProviderOptions.ratchetWindowSize) {
             workerLogger.debug("ratcheting key attempt ".concat(ratchetOpts.ratchetCount, " of ").concat(this.keyProviderOptions.ratchetWindowSize, ", for kind ").concat(encodedFrame instanceof RTCEncodedAudioFrame ? 'audio' : 'video'));
             let ratchetedKeySet;
-            if (keySet === this.keys.getKeySet(keyIndex)) {
+            if ((initialMaterial !== null && initialMaterial !== void 0 ? initialMaterial : keySet) === this.keys.getKeySet(keyIndex)) {
               // only ratchet if the currently set key is still the same as the one used to decrypt this frame
               // if not, it might be that a different frame has already ratcheted and we try with that one first
               const newMaterial = yield this.keys.ratchetKey(keyIndex, false);
@@ -1253,22 +1258,21 @@ class FrameCryptor extends BaseFrameCryptor {
               encryptionKey: ratchetedKeySet === null || ratchetedKeySet === void 0 ? void 0 : ratchetedKeySet.encryptionKey
             });
             if (frame && ratchetedKeySet) {
-              this.keys.setKeySet(ratchetedKeySet, keyIndex, true);
-              // decryption was successful, set the new key index to reflect the ratcheted key set
-              this.keys.setCurrentKeyIndex(keyIndex);
+              // before updating the keys, make sure that the keySet used for this frame is still the same as the currently set key
+              // if it's not, a new key might have been set already, which we don't want to override
+              if ((initialMaterial !== null && initialMaterial !== void 0 ? initialMaterial : keySet) === this.keys.getKeySet(keyIndex)) {
+                this.keys.setKeySet(ratchetedKeySet, keyIndex, true);
+                // decryption was successful, set the new key index to reflect the ratcheted key set
+                this.keys.setCurrentKeyIndex(keyIndex);
+              }
             }
             return frame;
           } else {
             /**
-             * Since the key it is first send and only afterwards actually used for encrypting, there were
-             * situations when the decrypting failed due to the fact that the received frame was not encrypted
-             * yet and ratcheting, of course, did not solve the problem. So if we fail RATCHET_WINDOW_SIZE times,
-             * we come back to the initial key.
+             * Because we only set a new key once decryption has been successful,
+             * we can be sure that we don't need to reset the key to the initial material at this point
+             * as the key has not been updated on the keyHandler instance
              */
-            if (initialMaterial) {
-              workerLogger.debug('resetting to initial material');
-              this.keys.setKeyFromMaterial(initialMaterial.material, keyIndex);
-            }
             workerLogger.warn('maximum ratchet attempts exceeded');
             throw new CryptorError("valid key missing for participant ".concat(this.participantIdentity), CryptorErrorReason.InvalidKey);
           }
