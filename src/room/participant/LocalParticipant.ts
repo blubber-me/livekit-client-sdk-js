@@ -33,7 +33,7 @@ import type {
   TrackPublishOptions,
   VideoCaptureOptions,
 } from '../track/options';
-import { ScreenSharePresets, VideoPresets, isBackupCodec, isCodecEqual } from '../track/options';
+import { VideoPresets, isBackupCodec, isCodecEqual } from '../track/options';
 import {
   constraintsForOptions,
   mergeDefaultOptions,
@@ -444,9 +444,6 @@ export default class LocalParticipant extends Participant {
     if (options === undefined) {
       options = {};
     }
-    if (options.resolution === undefined) {
-      options.resolution = ScreenSharePresets.h1080fps15.resolution;
-    }
 
     if (navigator.mediaDevices.getDisplayMedia === undefined) {
       throw new DeviceUnsupportedError('getDisplayMedia not supported');
@@ -652,6 +649,7 @@ export default class LocalParticipant extends Participant {
       encryption: this.encryptionType,
       stereo: isStereo,
       disableRed: this.isE2EEEnabled || !(opts.red ?? true),
+      stream: opts?.stream,
     });
 
     // compute encodings and layers for video
